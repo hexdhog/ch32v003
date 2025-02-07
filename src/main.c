@@ -1,4 +1,4 @@
-#include <stdint.h>
+typedef unsigned int uint32_t;
 
 typedef struct {
 	volatile uint32_t CTLR;			// clock control register
