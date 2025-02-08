@@ -83,7 +83,6 @@ typedef struct {
 
 #define RCC_APB2PCENR_IOPDEN	((uint32_t) 0x00000020)
 
-
 #define FLASH_CTLR_LATENCY_1    ((uint32_t) 0x00000001)
 
 
