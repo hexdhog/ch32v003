@@ -1,8 +1,7 @@
 .section .init
 .globl start
 start:
-        # there isn't really a need for setting up gp and sp since they are not
-        # used in this program
+        # there isn't really a need for setting up gp and sp since they are not used in this program
 .option push
 .option norelax
         la gp, __global_pointer$
