@@ -112,7 +112,7 @@ int main() {
 																// select HSI (instead of HSE) for PLL input
 	FLASH->ACTLR = FLASH_CTLR_LATENCY_1; // 1 cycle latency (recommended in the documentation when 24MHz <= SYSCLK <= 48MHz)
 	RCC->INTR = 0x009f0000;
-	// 0x009f0000 -> 0b 0000 0000 1001 1101 0000 0000
+	// 0x009f0000 -> 0b 0000 0000 1001 1101 0000 0000 0000 0000
 	//                  CSSC = 1 -> clear CSSF (clock security system interrupt flag bit)
 	//                  PLLRDYC = 1 -> clear PLLRDYF (PLL-ready interrupt flag bit)
 	//                  HSERDYC = 1 -> clear HSERDYF (HSE oscillator ready interrupt flag bit)
