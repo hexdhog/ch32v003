@@ -94,12 +94,13 @@ main:
         # wait until PLL is ready
         li t1, 0x02000000 # PLL_RDY mask
 .L_pll_rdy_wait:
-        # RCC CTLR
-        lw t0, 0(a0)
+        lw t0, 0(a0) # RCC CTLR
         and t0, t0, t1
         beq t0, zero, .L_pll_rdy_wait
 
-        # RCC CFGR0 = (RCC CFGR0 & ~(RCC CFGR0 SW)) | RCC CFGR0 SW PLL
+        # RCC_CFGR0 = RCC_CFGR0 & ~(0b11) | 0b10
+        # RCC_CFGR0 = RCC_CFGR0 & ~(0x00000003) | 0x00000002
+        # RCC_CFGR0 = RCC_CFGR0 & 0xfffffffc | 0x00000002
         lw t0, 4(a0) # t0 = RCC CFGR0
         and t0, t0, 0xfffffffc # ~(RCC CFGR0 SW) = ~(0x00000003) = 0xfffffffc
         or t0, t0, 0x00000002 # RCC CFGR0 SW PLL = 0x00000002
