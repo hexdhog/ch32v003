@@ -79,9 +79,106 @@ More specifically, we'll need the following registers:
 **R32_FLASH_ACTLR**
 ![CH32V003 R32_FLASH_INTR](./img/ch32v003-flash-actlr.png)
 
-**Note**: the description of each field for all registers is left out for brevity.
+**Note**: the description of each field for all registers is left out for brevity. More information can be found in the reference manual.
 
-First, HSI and PLL can be enabled through R32_RCC_CTLR's bit 0 (HSION) and bit 24 (PLLON).
+First, HSI and PLL are enabled through `R32_RCC_CTLR` field `HSION` (bit 0) and field `PLLON` (bit 24). For both fields, writing a 1 will enable the device and writing a 0 will disable it. So let's write some RISC-V assembly code to do exactly this:
+
+```riscv
+.equ rcc_base, 0x40021000
+.equ flash_r_base, 0x40022000
+.equ gpio_pd_base, 0x40011400
+.equ systck_base, 0xe000f000
+
+.globl main
+main:
+        li a0, rcc_base # a0 -> RCC register base address
+        li a1, flash_r_base # a1 -> FLASH register base address
+        li a2, gpio_pd_base # a2 -> GPIO port d register base address
+
+        # PLL_ON (bit 0): enable PLL
+        # HSI_ON (bit 24): enable HSI
+        #     RCC CTLR = 1 << 0 | 1 << 24
+        #     RCC CTLR = 0x01000001
+        li t0, 0x01000001
+        sw t0, 0(a0)
+```
+
+Second, the prescaler is turned off by writing 0 to `R32_RCC_CFGR0` field `HPRE` (bits 4-7) and HSI is selected as PLL source by writing 0 to field `PLLSRC` (bit 16):
+
+```riscv
+        # HPRE = 0: prescaler off; do not divide SYSCLK
+        # PLLSRC = 0: HSI (instead of HSE) for PLL input
+        #     RCC_CFGR0 = 0 << 4 | 0 << 16
+        #     RCC_CFGR0 = 0
+        li t0, 0x00000000
+        sw t0, 4(a0)
+```
+
+Third, flash latency is configured through `R32_FLASH_ACTLR` field `LATENCY` (bits 0-1); writing a 1 will select a 1 cycle latency:
+
+```riscv
+        # configure flash to recommended settings for 48MHz clock
+        # LATENCY (bits 0-1) = 1
+        #     FLASH_ACTLR = 1 << 0
+        #     FLASH_ACTLR = 1
+        li t0, 0x00000001
+        sw t0, 0(a1)
+```
+
+The fourth step, clearing the RCC interrupt flags, involves multiple fields of `R32_RCC_INTR`, so let's take a closer look at each of these fields to better understand how this register works:
+
+| bit | name       | access | desc                                               |
+|-----|------------|--------|----------------------------------------------------|
+| 0   | `LSIRDYF`  | RO     | LSI clock-ready interrupt flag                     |
+| 2   | `HSIRDYF`  | RO     | HSI clock-ready interrupt flag                     |
+| 3   | `HSERDYF`  | RO     | HSE clock-ready interrupt flag                     |
+| 4   | `PLLRDYF`  | RO     | PLL clock-ready lockout interrupt flag             |
+| 7   | `CSSF`     | RO     | Clock security system interrupt flag bit           |
+| 8   | `LSIRDYIE` | RW     | LSI-ready interrupt enable bit                     |
+| 10  | `HSIRDYIE` | RW     | HSI-ready interrupt enable bit                     |
+| 11  | `HSERDYIE` | RW     | HSE-ready interrupt enable bit                     |
+| 12  | `PLLRDYIE` | RW     | PLL-ready interrupt enable bit                     |
+| 16  | `LSIRDYC`  | WO     | Clear the LSI oscillator ready interrupt flag bit  |
+| 19  | `HSERDYC`  | WO     | Clear the HSE oscillator ready interrupt flag bit  |
+| 18  | `HSIRDYC`  | WO     | Clear the HSI oscillator ready interrupt flag bit  |
+| 20  | `PLLRDYC`  | WO     | Clear the PLL-ready interrupt flag bit             |
+| 23  | `CSSC`     | WO     | Clear the clock security system interrupt flag bit |
+
+The first 5 table entries are interrupt flags, indicated by the trailing `F`, and are read-only because they are set by hardware. The last 5 table entries are fields only used to clear the interrupt flags, indicated by the trailing `C`, and are write-only. Because the interrupt flags are set by hardware, these fields are need to physically "reset" the corresponding hardware, which will in turn clear the corresponding interrupt flag. Finally, the middle 4 table entries are interrupt enable fields, indicated by the trailing `IE`. When set to 1 the an interrupt will be generated when the corresponding interrupt flag is set.
+
+For our use case, we actually only *need* to clear certain interrupt flags for in order to know when certain events happend (e.g. we'll need to know when HSI and PLL are ready after we have enabled them), but clearing all of the interrupt flags is a good idea when changing the clock tree configuration anyway, so we'll do that. Also, we could write our program in a way that doesn't actively wait for the peripherals to be ready by utilizing interrupts but that would complicate our code, so we'll disable interrupt too:
+
+```riscv
+        # CSSC     (bit 23) = 1 -> clear CSSF (clock security system interrupt flag bit)
+        # PLLRDYC  (bit 20) = 1 -> clear PLLRDYF (PLL-ready interrupt flag bit)
+        # HSERDYC  (bit 19) = 1 -> clear HSERDYF (HSE oscillator ready interrupt flag bit)
+        # HSIRDYC  (bit 18) = 1 -> clear HSIRDYF (HSI oscillator ready interrupt flag bit)
+        # LSIRDYC  (bit 16) = 1 -> clear LSIRDYF (LSI oscillator ready interrupt flag bit)
+        # PLLRDYIE (bit 12) = 0 -> disable PLL-ready interrupt
+        # HSERDYIE (bit 11) = 0 -> disable HSE-ready interrupt
+        # HSIRDYIE (bit 10) = 0 -> disable HSI-ready interrupt
+        # LSIRDYIE (bit  8) = 0 -> disable LSI-ready interrupt
+        #     RCC_INTR = 1<<23 | 1<<20 | 1<<19 | 1<<18 | 1<<16 | 0<<12 | 0<<11 | 0<<10 | 0<<8
+        #     RCC_INTR = 0b 0000 0000 1001 1101 0000 0000 0000 0000
+        #     RCC_INTR = 0x009d0000
+        li t0, 0x009d0000
+        sw t0, 8(a0)
+```
+
+```riscv
+```
+
+```riscv
+```
+
+```riscv
+```
+
+```riscv
+```
+
+```riscv
+```
 
 ### GPIO port setup
 

@@ -52,35 +52,43 @@ start:
 main:
         # setup clock to 48MHz
         li a0, rcc_base # a0 -> RCC register base address
-        li a1, flash_r_base # a1 -> flash register base address
-        li a2, gpio_pd_base # a2 -> gpio port d register base address
+        li a1, flash_r_base # a1 -> FLASH register base address
+        li a2, gpio_pd_base # a2 -> GPIO port d register base address
 
-        # RCC CTLR = 0x01000001
-        #     PLL_ON: enable PLL
-        #     HSI_ON: enable HSI
+        # PLL_ON (bit 0): enable PLL
+        # HSI_ON (bit 24): enable HSI
+        #     RCC_CTLR = 1 << 0 | 1 << 24
+        #     RCC_CTLR = 0x01000001
         li t0, 0x01000001
         sw t0, 0(a0)
 
-        # RCC CFGR0 = 0x00000000
-        #     HBPRE_OFF: prescaler off; do not divide SYSCLK
-        #     PLLSRC_HSI: select HSI (instead of HSE) for PLL input
+        # HPRE = 0: prescaler off; do not divide SYSCLK
+        # PLLSRC = 0: HSI (instead of HSE) for PLL input
+        #     RCC_CFGR0 = 0 << 4 | 0 << 16
+        #     RCC_CFGR0 = 0
         li t0, 0x00000000
         sw t0, 4(a0)
 
         # configure flash to recommended settings for 48MHz clock
-        # FLASH ACTLR = 0x00000001
-        #     LATENCY_1: 1 cycle latency (recommended in the documentation when 24MHz <= SYSCLK <= 48MHz)
+        # LATENCY (bits 0-1) = 1
+        #     FLASH_ACTLR = 1 << 0
+        #     FLASH_ACTLR = 1
         li t0, 0x00000001
         sw t0, 0(a1)
 
-        # RCC INTR = 0x009f0000;
-	# 0x009f0000 -> 0b 0000 0000 1001 1101 0000 0000
-	#                  CSSC = 1 -> clear CSSF (clock security system interrupt flag bit)
-	#                  PLLRDYC = 1 -> clear PLLRDYF (PLL-ready interrupt flag bit)
-	#                  HSERDYC = 1 -> clear HSERDYF (HSE oscillator ready interrupt flag bit)
-	#                  HSIRDYC = 1 -> clear HSIRDYF (HSI oscillator ready interrupt flag bit)
-	#                  LSIRDYC = 1 -> clear LSIRDYF (LSI oscillator ready interrupt flag bit)
-        li t0, 0x009f0000
+        # CSSC     (bit 23) = 1 -> clear CSSF (clock security system interrupt flag bit)
+        # PLLRDYC  (bit 20) = 1 -> clear PLLRDYF (PLL-ready interrupt flag bit)
+        # HSERDYC  (bit 19) = 1 -> clear HSERDYF (HSE oscillator ready interrupt flag bit)
+        # HSIRDYC  (bit 18) = 1 -> clear HSIRDYF (HSI oscillator ready interrupt flag bit)
+        # LSIRDYC  (bit 16) = 1 -> clear LSIRDYF (LSI oscillator ready interrupt flag bit)
+        # PLLRDYIE (bit 12) = 0 -> disable PLL-ready interrupt
+        # HSERDYIE (bit 11) = 0 -> disable HSE-ready interrupt
+        # HSIRDYIE (bit 10) = 0 -> disable HSI-ready interrupt
+        # LSIRDYIE (bit  8) = 0 -> disable LSI-ready interrupt
+        #     RCC_INTR = 1<<23 | 1<<20 | 1<<19 | 1<<18 | 1<<16 | 0<<12 | 0<<11 | 0<<10 | 0<<8
+        #     RCC_INTR = 0b 0000 0000 1001 1101 0000 0000 0000 0000
+        #     RCC_INTR = 0x009d0000
+        li t0, 0x009d0000
         sw t0, 8(a0)
 
         # wait until PLL is ready
