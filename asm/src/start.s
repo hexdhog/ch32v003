@@ -121,12 +121,14 @@ main:
         or t0, t0, 0x00000020 # APB2PCENR | EPB2PCENR_IOPDEN
         sw t0, 24(a0)
 
-        # GPIOD->CFGLR &= ~(0x0f << (4 * LED_PIN)); // clear mode and configuration fields for selected pin
+        # clear current pin config with an and mask (shift count determined by pin number * pin conf bit count -> pin*4)
+        # GPIOD_CFGLR = GPIOD_CFGLR & ~(0xf << (4*pin))
         lw t0, 0(a2)
         li t1, ~(0x0f << (4 * led_pin))
         and t0, t0, t1
 
-	# GPIOD->CFGLR |= (GPIO_CFGLR_CNF_OUT_PP | GPIO_CFGLR_MODE_10MHz) << (4 * LED_PIN);
+        # set new pin config with an or
+        # GPIOD_CFGLR = GPIOD_CFGLR | ((0|1) << (4*pin))
         li t1, 0x00000001 << (4 * led_pin)
         or t0, t0, t1
         sw t0, 0(a2)

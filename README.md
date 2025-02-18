@@ -99,7 +99,19 @@ main:
         #     RCC CTLR = 0x01000001
         li t0, 0x01000001
         sw t0, 0(a0)
+        li a0, rcc_base # a0 -> RCC register base address
+        li a1, flash_r_base # a1 -> FLASH register base address
+        li a2, gpio_pd_base # a2 -> GPIO port d register base address
+
+        # PLL_ON (bit 0): enable PLL
+        # HSI_ON (bit 24): enable HSI
+        #     RCC CTLR = 1 << 0 | 1 << 24
+        #     RCC CTLR = 0x01000001
+        li t0, 0x01000001
+        sw t0, 0(a0)
 ```
+
+**Note:** I've already added a few lines of code, like constant definitions, which will be needed later.
 
 Second, the prescaler is turned off by writing 0 to `R32_RCC_CFGR0` field `HPRE` (bits 4-7) and HSI is selected as PLL source by writing 0 to field `PLLSRC` (bit 16):
 
@@ -199,6 +211,44 @@ Seventh, when PLL is selected as clock source `R32_RCC_CFGR0` field `SWS` (bits 
 ```
 
 ### GPIO port setup
+
+Before we can set a pin high or low we have to enable the corresponding GPIO port and configure the individual pin as output.
+
+Enabling the GPIO port is done through `R32_RCC_APB2PCENR` field `IOPDEN` (bit 5) which enables (when set to 1) disables (when set to 0) GPIO port D clock.
+
+```riscv
+        # setup GPIO pin for led
+        # enable GPIO port D clock
+        # RCC_AP2PCENR = RCC_AP2PCENR | 1 << 5
+        # RCC_AP2PCENR = RCC_AP2PCENR | 0x00000020
+        lw t0, 24(a0) # t0 = APB2PCENR
+        or t0, t0, 0x00000020 # APB2PCENR | EPB2PCENR_IOPDEN
+        sw t0, 24(a0)
+```
+
+Configuring the GPIO pin involves the GPIO registers, where each port has a different base address:
+
+![CH32V003 GPIO registers](./img/ch32v003-gpio-registers.png)
+
+**Note**: `R32_GPIOX_CFGLR` address and the next register address, `R32_GPIOX_INDR`, have an 8 byte difference. Since each register occupies 4 bytes that means there's a reserved register between them. On other chips of the CH32 family this space is used for `R32_GPIOX_CFGHR` (Configuration High Register) which controls another 8 pins, doubling the amount of pins for each GPIO port. Even though this register is not present in the CH32V003 it is left blank to maintain register address consistency within the chip family.
+
+More specifically, the `R32_GPIOX_CFGLR` (Configuration Low Register) is used to configure GPIO port D pins 0-7:
+
+![CH32V003 GPIO CFGLR](./img/ch32v003-gpio-cfglr.png)
+
+So, if we want to configure pin 4 we have to write to fields `MODE4` (bits 16-17) and `CNF4` (bits 18-19). To control the LED we want to set `MODE4` to 1, which indicates output at 10MHz maximum speed, and `CNF4` to 0, which indicates push-pull output mode. Because we don't want to overwrite the rest of pin configurations we could first perform a bitwise and with a mask and then bitwise or the result with the new configuration:
+
+```riscv
+        # clear current pin config with an and mask (shift count determined by pin number * pin conf bit count -> pin*4)
+        # GPIOD_CFGLR = GPIOD_CFGLR & ~(0xf << (4*pin)) | ((0|1) << (4*pin))
+        lw t0, 0(a2)
+        li t1, ~(0x0f << (4 * led_pin))
+        and t0, t0, t1
+
+        li t1, 0x00000001 << (4 * led_pin)
+        or t0, t0, t1
+        sw t0, 0(a2)
+```
 
 ### System tick counter as timer
 
