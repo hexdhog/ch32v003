@@ -93,6 +93,7 @@ typedef struct {
 #define LED_PIN 4
 
 void delay_systick(uint32_t n) {
+	SYSTCK->CTLR &= ~((uint32_t) 1); // turn off system counter
 	SYSTCK->SR &= ~((uint32_t) 1); // clear count value comparison flag
 	SYSTCK->CMP = n; // count end value
 	SYSTCK->CNT = 0; // count start value

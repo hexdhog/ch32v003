@@ -146,45 +146,62 @@ main:
         j .L_loop
 
 delay_systick:
-# SYSTCK->SR &= ~((uint32_t) 1); // clear count value comparison flag
-# SYSTCK->CMP = n; // count end value
-# SYSTCK->CNT = 0; // count start value
-# SYSTCK->CTLR |= 1; // turn on system counter
-# while (!(SYSTCK->SR & 1));
-# SYSTCK->CTLR &= ~((uint32_t) 1); // turn off system counter
+        # function prologue
+        addi sp, sp, -16
+        sw ra, 12(sp)
+        sw s0, 8(sp)
+        sw s1, 4(sp)
 
-        li a1, systck_base # a1 -> system tick register base address
+        li s1, systck_base # s1 -> system tick register base address
 
-        # stop system counter
-        lw t0, 0(a1)
-        and t0, t0, 0xfffffffe # set last bit (STE) to 0
-        sw t0, 0(a1)
+        # stop system counter (set STE [bit 0] to 0) and set HCLK/8 as clock source (set STCLK [bit 2] to 0)
+        # STK_CTLR = STK_CTLR & ~((1<<0) | (1<<2))
+        # STK_CTLR = STK_CTLR & ~(0x00000005)
+        # STK_CTLR = STK_CTLR & ~(0x00000005)
+        # STK_CTLR = STK_CTLR & 0xfffffffa
+        lw s0, 0(s1)
+        and s0, s0, 0xfffffffa
+        sw s0, 0(s1)
 
-        # clear count value comparison flag
-        li t0, 0xfffffffe # t0 = ~(1)
-        sw t0, 4(a1)
+        # clear count value comparison flag (set CNTIF [bit 0] to 0)
+        # STK_SR = STK_SR & ~(1<<0)
+        # STK_SR = STK_SR & 0xfffffffe
+        li s0, 0xfffffffe # s0 = ~(1)
+        sw s0, 4(s1)
 
-        # set count start value
-        sw zero, 8(a1)
+        # set initial counter value
+        # STK_CNTL = 0
+        sw zero, 8(s1)
         
         # set count end value
-        sw a0, 16(a1)
+        # STK_CMPLR = a0
+        sw a0, 16(s1)
 
-        # start system counter
-        lw t0, 0(a1)
-        or t0, t0, 0x00000001 # set last bit (STE) to 1
-        sw t0, 0(a1)
+        # start system counter (set STE [bit 0] to 1)
+        # STK_CTLR = STK_CTLR | (1<<0)
+        # STK_CTLR = STK_CTLR | 0x00000001
+        lw s0, 0(s1)
+        or s0, s0, 0x00000001
+        sw s0, 0(s1)
 
         # wait until count system counter has reached target number
 .L_wait:
-        lw t0, 4(a1)
-        and t0, t0, 0x00000001
-        beq t0, zero, .L_wait
+        lw s0, 4(s1) # s0 = STK_SR
+        and s0, s0, 0x00000001 # s0 = STK_SR & 0x00000001
+        beq s0, zero, .L_wait # if s0 != 0 -> bit 0 is set -> count has been reached
 
-        # stop system counter
-        lw t0, 0(a1)
-        and t0, t0, 0xfffffffe # set last bit (STE) to 0
-        sw t0, 0(a1)
+        # stop system counter (set STE [bit 0] to 0)
+        # STK_CTLR = STK_CTLR & ~(1<<0)
+        # STK_CTLR = STK_CTLR & 0xfffffffe
+        lw s0, 0(s1)
+        and s0, s0, 0xfffffffe
+        sw s0, 0(s1)
+
+        # function epilogue
+        lw s1, 4(sp)
+        lw s0, 8(sp)
+        lw ra, 12(sp)
+        addi sp, sp, 16
 
         ret
 
